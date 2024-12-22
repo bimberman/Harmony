@@ -42,7 +42,7 @@ const broadcastToRoom = (roomId, message) => {
     const clientId = Array.from(clientRooms.entries()).find(
       ([_, rid]) => rid === roomId
     )?.[0];
-    if (clientId && client.readyState === WebSocket.OPEN) {
+    if (clientId && client.readyState === client.OPEN) {
       client.send(JSON.stringify(message));
     }
   });
@@ -200,7 +200,10 @@ server.on("connection", (socket) => {
               const clientSocket = Array.from(server.clients).find(
                 (client) => client.id === player.id
               );
-              if (clientSocket && clientSocket.readyState === WebSocket.OPEN) {
+              if (
+                clientSocket &&
+                clientSocket.readyState === clientSocket.OPEN
+              ) {
                 clientSocket.send(
                   JSON.stringify({
                     type: "ALERT",

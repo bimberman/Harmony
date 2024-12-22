@@ -32,7 +32,7 @@ const ColorHarmony = () => {
   const [roundEndCountdown, setRoundEndCountdown] = useState(null);
 
   useEffect(() => {
-    const socket = new WebSocket("ws://localhost:8080");
+    const socket = new WebSocket("wss://neighborly-dapper-plywood.glitch.me");
 
     socket.onopen = () => {
       console.log("Connected to WebSocket server");
@@ -391,7 +391,8 @@ const ColorHarmony = () => {
                 )}
                 <span className="text-xl font-medium">{player}</span>
               </div>
-              <span className="text-xl">{Math.round(score)} pts</span> {/* Round the score for display */}
+              <span className="text-xl">{Math.round(score)} pts</span>{" "}
+              {/* Round the score for display */}
             </li>
           ))}
         </ul>
