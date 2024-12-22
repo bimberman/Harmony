@@ -2,9 +2,11 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Users, Crown, Award, RefreshCw, User, Timer } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Crown, Users, Copy, Timer, CheckCircle, Circle } from "lucide-react"; // Add this import
 import { Progress } from "@/components/ui/progress";
+
+const INITIAL_TIMER = 40;
 
 const ColorHarmony = () => {
   const [gameState, setGameState] = useState({
@@ -16,401 +18,561 @@ const ColorHarmony = () => {
     scores: {},
     guesses: {},
     maxRounds: 5,
-    usedColors: new Set(),
   });
 
-  const [colorGuess, setColorGuess] = useState({
-    r: "",
-    g: "",
-    b: "",
-  });
-
-  const [timeLeft, setTimeLeft] = useState(40);
-  const [timerActive, setTimerActive] = useState(false);
+  const [colorGuess, setColorGuess] = useState({ r: "", g: "", b: "" });
+  const [timeLeft, setTimeLeft] = useState(INITIAL_TIMER);
   const [nickname, setNickname] = useState("");
-  const [playerInfo, setPlayerInfo] = useState(null);
+  const [roomId, setRoomId] = useState("");
+  const [ws, setWs] = useState(null);
+  const [showJoinInput, setShowJoinInput] = useState(false);
+  const [isHost, setIsHost] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasExitedLobby, setHasExitedLobby] = useState(false);
+  const [roundEndCountdown, setRoundEndCountdown] = useState(null);
 
-  // Timer effect
+  useEffect(() => {
+    const socket = new WebSocket("ws://localhost:8080");
+
+    socket.onopen = () => {
+      console.log("Connected to WebSocket server");
+    };
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log("Received from server:", data);
+
+      switch (data.type) {
+        case "ROOM_CREATED":
+          setRoomId(data.payload.roomId);
+          setGameState(data.payload.gameState);
+          setIsHost(true);
+          setIsLoading(false);
+          break;
+
+        case "GAME_STATE_UPDATE":
+          setGameState(data.payload);
+          setIsLoading(false);
+          break;
+
+        case "ROUND_END_COUNTDOWN":
+          setRoundEndCountdown(data.payload);
+          break;
+
+        case "ERROR":
+          alert(data.payload);
+          setIsLoading(false);
+          break;
+
+        case "ALERT":
+          alert(data.payload);
+          setRoomId("");
+          setGameState({
+            phase: "setup",
+            players: [],
+            currentPrompt: null,
+            targetColor: null,
+            roundNumber: 0,
+            scores: {},
+            guesses: {},
+            maxRounds: 5,
+          });
+          setIsHost(false);
+          setShowJoinInput(false);
+          break;
+      }
+    };
+
+    socket.onclose = () => {
+      console.log("Disconnected from WebSocket server");
+    };
+
+    setWs(socket);
+
+    return () => {
+      socket.close();
+    };
+  }, [nickname]);
+
   useEffect(() => {
     let interval;
-    if (timerActive && timeLeft > 0) {
+    if (gameState.phase === "input" && timeLeft > 0) {
       interval = setInterval(() => {
         setTimeLeft((prev) => prev - 1);
       }, 1000);
-    } else if (timeLeft === 0 && timerActive) {
+    } else if (timeLeft === 0 && gameState.phase === "input") {
       submitGuess();
-      setTimerActive(false);
     }
     return () => clearInterval(interval);
-  }, [timerActive, timeLeft]);
+  }, [timeLeft, gameState.phase]);
 
-  const colorPrompts = [
-    {
-      name: "Sunset Glow",
-      description:
-        "A warm blend of orange and pink with a hint of red. It's soft, radiant, and evokes the last rays of sunlight over the horizon.",
-      rgb: { r: 255, g: 126, b: 95 },
-    },
-    {
-      name: "Ocean Deep",
-      description:
-        "A rich marine blue with traces of green, reminiscent of clear tropical waters on a sunny day.",
-      rgb: { r: 0, g: 105, b: 148 },
-    },
-    {
-      name: "Forest Canopy",
-      description:
-        "A deep, vibrant green with subtle dark undertones, like sunlight filtering through dense leaves.",
-      rgb: { r: 34, g: 139, b: 34 },
-    },
-    {
-      name: "Desert Sand",
-      description:
-        "A warm, golden beige that captures the essence of sun-baked dunes under the midday sun.",
-      rgb: { r: 237, g: 201, b: 175 },
-    },
-    {
-      name: "Lavender Dream",
-      description:
-        "A soft, misty purple with subtle grey undertones, like a field of lavender at dawn.",
-      rgb: { r: 230, g: 230, b: 250 },
-    },
-  ];
+  useEffect(() => {
+    if (gameState.phase === "play") {
+      setTimeLeft(INITIAL_TIMER); // Reset the timer when the game phase is "play"
+    }
+  }, [gameState.phase]);
+
+  useEffect(() => {
+    let interval;
+    if (roundEndCountdown !== null) {
+      interval = setInterval(() => {
+        setRoundEndCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [roundEndCountdown]);
+
+  useEffect(() => {
+    if (roundEndCountdown === 0) {
+      // End the round
+      setRoundEndCountdown(null);
+      // Proceed to the next round or end the game
+      // Remove the following line to prevent multiple executions
+      // ws.send(
+      //   JSON.stringify({
+      //     type: "END_ROUND",
+      //     payload: { roomId },
+      //   })
+      // );
+    }
+  }, [roundEndCountdown, roomId, ws]);
+
+  const createGame = () => {
+    if (!nickname) {
+      alert("Please enter a nickname to create a game.");
+      return;
+    }
+    ws.send(
+      JSON.stringify({
+        type: "CREATE_ROOM",
+        payload: { nickname },
+      })
+    );
+    setIsLoading(true);
+  };
+
+  const startGame = () => {
+    ws.send(
+      JSON.stringify({
+        type: "START_GAME",
+        payload: { nickname },
+      })
+    );
+    setGameState((prev) => ({ ...prev, phase: "input" })); // Set phase to "input" when the game starts
+  };
 
   const joinGame = () => {
-    if (nickname.trim() && nickname.length >= 2) {
-      setPlayerInfo({ nickname: nickname.trim() });
-      setGameState((prev) => ({
-        ...prev,
-        players: [...prev.players, nickname.trim()],
-        phase: prev.players.length === 0 ? "playing" : prev.phase,
-        scores: { ...prev.scores, [nickname.trim()]: 0 },
-      }));
-      selectNewPrompt();
+    if (!nickname || !roomId) {
+      alert("Please enter both nickname and room ID");
+      return;
     }
+    ws.send(
+      JSON.stringify({
+        type: "JOIN_ROOM",
+        payload: { roomId, nickname },
+      })
+    );
+    setIsLoading(true);
   };
 
-  const selectNewPrompt = () => {
-    const availablePrompts = colorPrompts.filter(
-      (prompt) => !gameState.usedColors.has(prompt.name)
+  const exitLobby = () => {
+    ws.send(
+      JSON.stringify({
+        type: "EXIT_LOBBY",
+        payload: { roomId, nickname },
+      })
     );
-
-    if (availablePrompts.length === 0) {
-      setGameState((prev) => ({ ...prev, usedColors: new Set() }));
-      return selectNewPrompt();
-    }
-
-    const randomPrompt =
-      availablePrompts[Math.floor(Math.random() * availablePrompts.length)];
-
-    setGameState((prev) => ({
-      ...prev,
-      currentPrompt: randomPrompt,
-      targetColor: randomPrompt.rgb,
-      phase: "input",
-      roundNumber: prev.roundNumber + 1,
+    setRoomId("");
+    setGameState({
+      phase: "setup",
+      players: [],
+      currentPrompt: null,
+      targetColor: null,
+      roundNumber: 0,
+      scores: {},
       guesses: {},
-      usedColors: new Set([...prev.usedColors, randomPrompt.name]),
-    }));
-    setColorGuess({ r: "", g: "", b: "" });
-    setTimeLeft(40);
-    setTimerActive(true);
+      maxRounds: 5,
+    });
+    setIsHost(false);
+    setShowJoinInput(false);
+    setHasExitedLobby(true); // Set the state to true when exiting the lobby
   };
 
-  const calculateDistance = (guess, target) => {
-    return Math.sqrt(
-      Math.pow(guess.r - target.r, 2) +
-        Math.pow(guess.g - target.g, 2) +
-        Math.pow(guess.b - target.b, 2)
+  const closeLobby = () => {
+    ws.send(
+      JSON.stringify({
+        type: "CLOSE_LOBBY",
+        payload: { roomId, nickname },
+      })
     );
-  };
-
-  const handleColorInput = (component, value) => {
-    const numValue = parseInt(value);
-    if (isNaN(numValue) || numValue < 0) {
-      setColorGuess((prev) => ({ ...prev, [component]: "0" }));
-    } else if (numValue > 255) {
-      setColorGuess((prev) => ({ ...prev, [component]: "255" }));
-    } else {
-      setColorGuess((prev) => ({ ...prev, [component]: value }));
-    }
+    setRoomId("");
+    setGameState({
+      phase: "setup",
+      players: [],
+      currentPrompt: null,
+      targetColor: null,
+      roundNumber: 0,
+      scores: {},
+      guesses: {},
+      maxRounds: 5,
+    });
+    setIsHost(false);
+    setShowJoinInput(false);
   };
 
   const submitGuess = () => {
-    if (!playerInfo) return;
-    setTimerActive(false);
+    const { r, g, b } = colorGuess;
+    if (r === "" || g === "" || b === "") return;
 
-    const guess = {
-      r: parseInt(colorGuess.r) || 0,
-      g: parseInt(colorGuess.g) || 0,
-      b: parseInt(colorGuess.b) || 0,
-    };
-
-    const distance = calculateDistance(guess, gameState.targetColor);
-    const score = Math.max(0, Math.round(100 - distance / 4.42));
-
-    setGameState((prev) => {
-      const newGuesses = {
-        ...prev.guesses,
-        [playerInfo.nickname]: guess,
-      };
-
-      const newScores = {
-        ...prev.scores,
-        [playerInfo.nickname]: (prev.scores[playerInfo.nickname] || 0) + score,
-      };
-
-      const allPlayersSubmitted = prev.players.every((player) =>
-        newGuesses.hasOwnProperty(player)
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      // Ensure WebSocket is open
+      ws.send(
+        JSON.stringify({
+          type: "SUBMIT_GUESS",
+          payload: {
+            nickname,
+            guess: { r, g, b },
+          },
+        })
       );
+    }
 
-      const isGameOver = prev.roundNumber >= prev.maxRounds;
-
-      return {
-        ...prev,
-        phase: isGameOver
-          ? "results"
-          : allPlayersSubmitted
-          ? "results"
-          : "input",
-        guesses: newGuesses,
-        scores: newScores,
-      };
-    });
-  };
-
-  const finishGame = () => {
     setGameState((prev) => ({
       ...prev,
-      phase: "ended",
+      guesses: {
+        ...prev.guesses,
+        [nickname]: { r, g, b },
+      },
+    }));
+
+    if (
+      Object.keys(gameState.guesses).length + 1 ===
+      gameState.players.length
+    ) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        // Ensure WebSocket is open
+        ws.send(
+          JSON.stringify({
+            type: "START_ROUND_END_COUNTDOWN",
+            payload: { roomId },
+          })
+        );
+      }
+    }
+  };
+
+  const handleColorInput = (component, value) => {
+    setColorGuess((prev) => ({
+      ...prev,
+      [component]: Math.max(0, Math.min(255, Number(value) || 0)),
     }));
   };
 
-  const getWinner = () => {
-    const scores = gameState.scores;
-    return Object.entries(scores).reduce((a, b) =>
-      scores[a[0]] > scores[b[0]] ? a : b
+  const renderLobby = () => (
+    <div className="space-y-6">
+      <div className="bg-gray-50 p-6 rounded-lg">
+        <h2 className="text-2xl font-bold mb-4">Lobby</h2>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-2">
+            {gameState.players.map((player, index) => (
+              <div
+                key={player.id}
+                className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-600">#{index + 1}</span>
+                  {gameState.guesses[player.nickname] && (
+                    <CheckCircle className="text-green-500" size={16} />
+                  )}
+                  <span className="font-medium">{player.nickname}</span>
+                  {player.isHost && (
+                    <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                      Host
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {isHost ? (
+            <>
+              <Button
+                onClick={startGame}
+                className="w-full"
+                disabled={gameState.players.length < 2}
+              >
+                {gameState.players.length < 2
+                  ? "Waiting for more players..."
+                  : "Start Game"}
+              </Button>
+              <Button onClick={closeLobby} className="w-full mt-2">
+                Close Lobby
+              </Button>
+            </>
+          ) : (
+            <Button onClick={exitLobby} className="w-full">
+              Exit Lobby
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderLeaderboard = () => (
+    <div className="bg-gray-50 p-4 rounded-lg">
+      <h3 className="text-xl font-bold mb-2">Leaderboard</h3>
+      <ul className="space-y-1">
+        {Object.entries(gameState.scores)
+          .sort(([, a], [, b]) => b - a)
+          .map(([player, score], index) => (
+            <li
+              key={player}
+              className="flex justify-between p-2 bg-white rounded-lg shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                {gameState.guesses[player] ? (
+                  <CheckCircle className="text-green-500" size={16} />
+                ) : (
+                  <Circle className="text-gray-500" size={16} />
+                )}
+                <span>
+                  {index + 1}. {player}
+                </span>
+              </div>
+              <span>{Math.round(score)} pts</span>{" "}
+              {/* Round the score for display */}
+            </li>
+          ))}
+      </ul>
+    </div>
+  );
+
+  const returnToMainMenu = () => {
+    setRoomId("");
+    setGameState({
+      phase: "setup",
+      players: [],
+      currentPrompt: null,
+      targetColor: null,
+      roundNumber: 0,
+      scores: {},
+      guesses: {},
+      maxRounds: 5,
+    });
+    setIsHost(false);
+    setShowJoinInput(false);
+    setHasExitedLobby(false);
+  };
+
+  const renderEndGameLeaderboard = () => {
+    const sortedScores = Object.entries(gameState.scores).sort(
+      ([, a], [, b]) => b - a
+    );
+    const highestScore = sortedScores[0][1];
+    const winners = sortedScores
+      .filter(([, score]) => score === highestScore)
+      .map(([player]) => player);
+
+    return (
+      <div className="bg-gray-50 p-6 rounded-lg text-center">
+        <h2 className="text-3xl font-bold mb-4">Game Over</h2>
+        <h3 className="text-2xl font-bold mb-2">Leaderboard</h3>
+        <ul className="space-y-2">
+          {sortedScores.map(([player, score], index) => (
+            <li
+              key={player}
+              className="flex justify-between items-center p-3 bg-white rounded-lg shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                {winners.includes(player) && (
+                  <Crown className="text-yellow-500" size={24} />
+                )}
+                <span className="text-xl font-medium">{player}</span>
+              </div>
+              <span className="text-xl">{Math.round(score)} pts</span> {/* Round the score for display */}
+            </li>
+          ))}
+        </ul>
+        <div className="mt-4">
+          <h4 className="text-xl font-bold">
+            Winner{winners.length > 1 ? "s" : ""}:
+          </h4>
+          <p className="text-lg">{winners.join(" / ")}</p>
+        </div>
+        <Button onClick={returnToMainMenu} className="mt-6">
+          Return to Main Menu
+        </Button>
+      </div>
     );
   };
 
-  const ColorDisplay = ({ color, label }) => (
-    <div className="flex flex-col items-center gap-2">
-      <div
-        className="w-24 h-24 rounded-lg shadow-md"
-        style={{ backgroundColor: `rgb(${color.r}, ${color.g}, ${color.b})` }}
-      />
-      <span className="text-sm font-medium">{label}</span>
-      <span className="text-xs text-gray-600">
-        RGB({color.r}, {color.g}, {color.b})
-      </span>
-    </div>
-  );
-
-  const TimerDisplay = () => (
-    <div className="w-full mb-4">
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-sm font-medium flex items-center gap-2">
-          <Timer className="h-4 w-4" />
-          Time Remaining: {timeLeft}s
-        </span>
-      </div>
-      <Progress value={(timeLeft / 40) * 100} className="h-2" />
-    </div>
-  );
-
-  const LeaderboardCard = () => (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Award />
-          Leaderboard
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          {Object.entries(gameState.scores)
-            .sort(([, a], [, b]) => b - a)
-            .map(([player, score], index) => (
-              <div
-                key={player}
-                className={`flex justify-between items-center p-2 rounded ${
-                  index === 0 ? "bg-yellow-50 font-bold" : ""
-                }`}
-              >
-                <span>{player}</span>
-                <span>{score} points</span>
-              </div>
-            ))}
+  const renderGame = () => (
+    <div className="space-y-6">
+      <div className="bg-gray-50 p-6 rounded-lg">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold">
+            Round {gameState.roundNumber} / {gameState.maxRounds}
+          </h2>
+          {roundEndCountdown !== null && (
+            <span className="text-sm text-red-600">
+              Round ends in {roundEndCountdown}s. Last change to update your
+              guess!
+            </span>
+          )}
+          <span className="text-sm text-gray-600">
+            Players: {gameState.players.length}
+          </span>
         </div>
-      </CardContent>
-    </Card>
+        {gameState.currentPrompt && (
+          <div className="mb-6">
+            <h3 className="text-xl font-bold mb-2 text-left">
+              {gameState.currentPrompt.name}
+            </h3>
+            <p className="text-gray-600 text-left">
+              {gameState.currentPrompt.description}
+            </p>
+          </div>
+        )}
+        <div className="mb-6">
+          <Progress value={(timeLeft / INITIAL_TIMER) * 100} />{" "}
+          {/* Ensure the progress value is correctly calculated */}
+        </div>
+        {gameState.colorList &&
+          gameState.colorList[gameState.roundNumber - 1] && (
+            <div className="mb-6 text-left">
+              <h3 className="text-xl font-bold">
+                {gameState.colorList[gameState.roundNumber - 1].name}
+              </h3>
+              <p className="text-gray-600">
+                {gameState.colorList[gameState.roundNumber - 1].description}
+              </p>
+            </div>
+          )}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {["r", "g", "b"].map((color) => (
+            <div key={color}>
+              <label className="block text-sm font-medium mb-1">
+                {color.toUpperCase()} (0-255)
+              </label>
+              <Input
+                type="number"
+                value={colorGuess[color] || ""}
+                onChange={(e) => handleColorInput(color, e.target.value)}
+                className="w-full"
+              />
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-center gap-6 mb-6">
+          <div className="text-center">
+            <div
+              className="w-24 h-24 rounded-lg border shadow-sm mb-2"
+              style={{
+                backgroundColor: `rgb(${colorGuess.r || 0}, ${
+                  colorGuess.g || 0
+                }, ${colorGuess.b || 0})`,
+              }}
+            />
+            <p className="text-sm text-gray-600">Your Guess</p>
+          </div>
+          {gameState.targetColor && (
+            <div className="text-center">
+              <div
+                className="w-24 h-24 rounded-lg shadow-sm mb-2"
+                style={{ backgroundColor: gameState.targetColor }}
+              />
+              <p className="text-sm text-gray-600">Target Color</p>
+            </div>
+          )}
+        </div>
+        <div className="flex justify-center">
+          <Button onClick={submitGuess} className="px-6">
+            {gameState.guesses[nickname] ? "Update Guess" : "Submit Guess"}
+          </Button>
+        </div>
+      </div>
+      {renderLeaderboard()}
+    </div>
   );
 
-  if (gameState.phase === "setup" || !playerInfo) {
-    return (
-      <div className="max-w-md mx-auto mt-20 p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Join Color Harmony</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Your Nickname
-                </label>
-                <Input
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                  placeholder="Enter nickname (min 2 characters)"
-                  className="w-full"
-                />
-              </div>
-              <Button
-                onClick={joinGame}
-                disabled={nickname.trim().length < 2}
-                className="w-full"
-              >
-                <User className="mr-2 h-4 w-4" />
-                Join Game
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (hasExitedLobby) {
+      setHasExitedLobby(false); // Reset the state
+      setIsLoading(false); // Ensure loading state is reset
+    }
+  }, [hasExitedLobby]);
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              Color Harmony
-              <Users className="ml-2" />
-              <span className="text-sm font-normal">
-                Players: {gameState.players.length}/10
-              </span>
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Crown className="text-yellow-500" />
-              <span className="text-sm">
-                Round {gameState.roundNumber} of {gameState.maxRounds}
-              </span>
+    <div className="p-4 max-w-4xl mx-auto">
+      {isLoading ? (
+        <div className="flex justify-center items-center h-full">
+          <span className="text-gray-500">Loading...</span>
+        </div>
+      ) : hasExitedLobby ? (
+        <div className="flex justify-center items-center h-full">
+          <span className="text-gray-500">You have exited the lobby.</span>
+        </div>
+      ) : gameState.phase === "end" ? (
+        renderEndGameLeaderboard()
+      ) : (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div className="flex items-center gap-4">
+              <CardTitle>Color Harmony</CardTitle>
+              {roomId && (
+                <div className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-md">
+                  <span className="text-sm">Room: {roomId}</span>
+                </div>
+              )}
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {gameState.phase === "ended" ? (
-            <Alert className="mb-6">
-              <AlertTitle>Game Over!</AlertTitle>
-              <AlertDescription>
-                {getWinner()[0]} wins with {getWinner()[1]} points! 🎉
-              </AlertDescription>
-            </Alert>
-          ) : (
-            gameState.currentPrompt && (
-              <div className="mb-6 bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-xl font-bold mb-2">
-                  {gameState.currentPrompt.name}
-                </h3>
-                <p className="text-gray-600">
-                  {gameState.currentPrompt.description}
-                </p>
-              </div>
-            )
-          )}
+          </CardHeader>
 
-          {gameState.phase !== "ended" && (
-            <>
-              {gameState.phase === "input" && <TimerDisplay />}
+          <CardContent>
+            {gameState.phase === "setup" && (
+              <div className="space-y-4">
+                <Input
+                  placeholder="Enter your nickname"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
+                />
 
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Red (0-255)
-                  </label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="255"
-                    value={colorGuess.r}
-                    onChange={(e) => handleColorInput("r", e.target.value)}
-                    className="w-full"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Green (0-255)
-                  </label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="255"
-                    value={colorGuess.g}
-                    onChange={(e) => handleColorInput("g", e.target.value)}
-                    className="w-full"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Blue (0-255)
-                  </label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="255"
-                    value={colorGuess.b}
-                    onChange={(e) => handleColorInput("b", e.target.value)}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-center gap-6 mb-6">
-                <ColorDisplay color={colorGuess} label="Your Guess" />
-                {gameState.phase === "results" && gameState.targetColor && (
-                  <ColorDisplay
-                    color={gameState.targetColor}
-                    label="Target Color"
-                  />
-                )}
-              </div>
-
-              <div className="flex justify-center gap-4">
-                {gameState.phase === "input" &&
-                !gameState.guesses[playerInfo.nickname] ? (
-                  <Button onClick={submitGuess} className="px-6">
-                    Submit Guess
-                  </Button>
+                {!showJoinInput ? (
+                  <div className="flex gap-2">
+                    <Button onClick={createGame}>Create New Game</Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowJoinInput(true)}
+                    >
+                      Join Existing Game
+                    </Button>
+                  </div>
                 ) : (
-                  gameState.phase === "results" &&
-                  (gameState.roundNumber < gameState.maxRounds ? (
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter room ID"
+                      value={roomId}
+                      onChange={(e) => setRoomId(e.target.value)}
+                    />
+                    <Button onClick={joinGame}>Join Game</Button>
                     <Button
-                      onClick={selectNewPrompt}
-                      className="px-6"
                       variant="outline"
+                      onClick={() => setShowJoinInput(false)}
                     >
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      Next Color
+                      Cancel
                     </Button>
-                  ) : (
-                    <Button
-                      onClick={finishGame}
-                      className="px-6"
-                      variant="outline"
-                    >
-                      See Final Results
-                    </Button>
-                  ))
+                  </div>
                 )}
               </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-      <LeaderboardCard />
+            )}
+
+            {gameState.phase === "lobby" && renderLobby()}
+
+            {gameState.phase === "play" && renderGame()}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
