@@ -1,0 +1,52 @@
+[
+  {
+    "name": "Sunset Glow",
+    "description": "A warm blend of orange and pink with a hint of red. It's soft, radiant, and evokes the last rays of sunlight over the horizon.",
+    "rgb": { "r": 255, "g": 126, "b": 95 }
+  },
+  {
+    "name": "Ocean Deep",
+    "description": "A rich marine blue with traces of green, reminiscent of clear tropical waters on a sunny day.",
+    "rgb": { "r": 0, "g": 105, "b": 148 }
+  },
+  {
+    "name": "Forest Canopy",
+    "description": "A deep, vibrant green with subtle dark undertones, like sunlight filtering through dense leaves.",
+    "rgb": { "r": 34, "g": 139, "b": 34 }
+  },
+  {
+    "name": "Desert Sand",
+    "description": "A warm, golden beige that captures the essence of sun-baked dunes under the midday sun.",
+    "rgb": { "r": 237, "g": 201, "b": 175 }
+  },
+  {
+    "name": "Lavender Dream",
+    "description": "A soft, misty purple with subtle grey undertones, like a field of lavender at dawn.",
+    "rgb": { "r": 230, "g": 230, "b": 250 }
+  },
+  {
+    "name": "Crimson Tide",
+    "description": "A bold, deep red that exudes passion and intensity, reminiscent of a dramatic sunset.",
+    "rgb": { "r": 220, "g": 20, "b": 60 }
+  },
+  {
+    "name": "Golden Sunrise",
+    "description": "A bright, golden yellow that captures the brilliance of the first light of day.",
+    "rgb": { "r": 255, "g": 223, "b": 0 }
+  },
+  {
+    "name": "Misty Grey",
+    "description": "A soft, neutral grey with a touch of blue, like a foggy morning sky.",
+    "rgb": { "r": 169, "g": 169, "b": 169 }
+  },
+  {
+    "name": "Berry Bliss",
+    "description": "A rich, vibrant magenta that combines the sweetness of berries with a touch of elegance.",
+    "rgb": { "r": 199, "g": 21, "b": 133 }
+  },
+  {
+    "name": "Midnight Blue",
+    "description": "A deep, dark blue that evokes the tranquility and mystery of the night sky.",
+    "rgb": { "r": 25, "g": 25, "b": 112 }
+  }
+]
