@@ -4,7 +4,7 @@ import fs from "fs";
 
 const PORT = process.env.PORT || 8080;
 
-// Create HTTP server for Fly.io WebSocket support
+// Create HTTP server for WebSocket support
 const httpServer = http.createServer();
 const wss = new WebSocketServer({ server: httpServer });
 

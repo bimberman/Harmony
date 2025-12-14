@@ -32,8 +32,8 @@ const ColorHarmony = () => {
   const [roundEndCountdown, setRoundEndCountdown] = useState(null);
 
   useEffect(() => {
-    const socket = new WebSocket("wss://neighborly-dapper-plywood.glitch.me");
-
+    const socket = new WebSocket("wss://harmony.benimberman.com");
+    
     socket.onopen = () => {
       console.log("Connected to WebSocket server");
     };
