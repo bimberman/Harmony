@@ -1,7 +1,16 @@
 import { WebSocketServer } from "ws";
+import http from "http";
 import fs from "fs";
 
-const server = new WebSocketServer({ port: 8080 });
+const PORT = process.env.PORT || 8080;
+
+// Create HTTP server for Fly.io WebSocket support
+const httpServer = http.createServer();
+const wss = new WebSocketServer({ server: httpServer });
+
+httpServer.listen(PORT, () => {
+  console.log(`WebSocket server running on port ${PORT}`);
+});
 
 // Store rooms and their states
 const rooms = new Map();
@@ -38,7 +47,7 @@ const broadcastToRoom = (roomId, message) => {
   const room = rooms.get(roomId);
   if (!room) return;
 
-  server.clients.forEach((client) => {
+  wss.clients.forEach((client) => {
     const clientId = Array.from(clientRooms.entries()).find(
       ([_, rid]) => rid === roomId
     )?.[0];
@@ -67,7 +76,7 @@ const exitRoom = (clientId) => {
   }
 };
 
-server.on("connection", (socket) => {
+wss.on("connection", (socket) => {
   const clientId = Date.now().toString();
   socket.id = clientId; // Assign the clientId to the socket
 
@@ -197,7 +206,7 @@ server.on("connection", (socket) => {
 
           if (room && room.host === data.payload.nickname) {
             room.players.forEach((player) => {
-              const clientSocket = Array.from(server.clients).find(
+              const clientSocket = Array.from(wss.clients).find(
                 (client) => client.id === player.id
               );
               if (
@@ -269,4 +278,4 @@ const endRound = (roomId) => {
   }
 };
 
-console.log("WebSocket server running on ws://localhost:8080");
+console.log(`WebSocket server running on port ${PORT}`);

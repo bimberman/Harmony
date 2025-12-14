@@ -1,0 +1,17 @@
+{
+  "name": "color-harmony-server",
+  "version": "1.0.0",
+  "description": "WebSocket server for Color Harmony game",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "ws": "^8.2.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+
